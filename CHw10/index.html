@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Mask AR - MindAR</title>
+    <script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.1.4/dist/mindar-face-three.prod.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.150.1/build/three.module.js"
+        }
+    }
+    </script>
+    <style>
+        html, body {
+            position: relative;
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        
+        #controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .control-btn {
+            padding: 10px 15px;
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            min-width: 120px;
+        }
+        
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 1);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        
+        .control-btn:active {
+            transform: translateY(0);
+        }
+        
+        #maskSelector {
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        
+        #capture {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            height: 70px;
+            width: 70px;
+            border: solid 4px white;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateX(-50%);
+            z-index: 100;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        #capture:hover {
+            background: rgba(255, 255, 255, 0.4);
+            transform: translateX(-50%) scale(1.1);
+        }
+        
+        #capture:active {
+            transform: translateX(-50%) scale(0.95);
+        }
+        
+        #switch {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+        
+        #switch:hover {
+            background: rgba(255, 255, 255, 1);
+            transform: translateY(-2px);
+        }
+        
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            z-index: 100;
+        }
+        
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 18px;
+            z-index: 1000;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading" class="loading">
+        <div>Завантаження AR...</div>
+        <div style="font-size: 14px; margin-top: 10px;">Дозвольте доступ до камери</div>
+    </div>
+    
+    <div id="controls">
+        <select id="maskSelector">
+            <option value="none">Без маски</option>
+            <option value="glasses">Окуляри</option>
+            <option value="face_paint">Розфарбування</option>
+        </select>
+        <button class="control-btn" id="toggleWireframe">Каркас</button>
+        <button class="control-btn" id="resetPosition">Скинути позицію</button>
+    </div>
+    
+    <button id="capture" title="Зробити фото"></button>
+    <button id="switch">📷 Камера</button>
+    
+    <div id="info">MindAR Face Tracking</div>
+
+    <script type="module">
+        import * as THREE from "three";
+
+        // Utility functions for creating textures
+        const createGlassesTexture = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            ctx.clearRect(0, 0, 512, 512);
+            
+            // Draw glasses frame
+            ctx.strokeStyle = '#333333';
+            ctx.lineWidth = 8;
+            
+            // Left lens
+            ctx.beginPath();
+            ctx.arc(180, 230, 60, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Right lens
+            ctx.beginPath();
+            ctx.arc(332, 230, 60, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Bridge
+            ctx.beginPath();
+            ctx.moveTo(240, 230);
+            ctx.lineTo(272, 230);
+            ctx.lineWidth = 6;
+            ctx.stroke();
+            
+            // Left temple
+            ctx.beginPath();
+            ctx.moveTo(120, 230);
+            ctx.lineTo(80, 220);
+            ctx.stroke();
+            
+            // Right temple
+            ctx.beginPath();
+            ctx.moveTo(392, 230);
+            ctx.lineTo(432, 220);
+            ctx.stroke();
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.needsUpdate = true;
+            return texture;
+        };
+
+        const createFacePaintTexture = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            ctx.clearRect(0, 0, 512, 512);
+            
+            // Face paint designs
+            ctx.fillStyle = '#FF6B6B';
+            
+            // Hearts on cheeks
+            const drawHeart = (x, y, size) => {
+                ctx.beginPath();
+                ctx.arc(x - size/2, y - size/3, size/3, 0, Math.PI * 2);
+                ctx.arc(x + size/2, y - size/3, size/3, 0, Math.PI * 2);
+                ctx.moveTo(x - size, y);
+                ctx.lineTo(x, y + size);
+                ctx.lineTo(x + size, y);
+                ctx.fill();
+            };
+            
+            drawHeart(160, 320, 30);
+            drawHeart(352, 320, 30);
+            
+            // Stars around eyes
+            ctx.fillStyle = '#4ECDC4';
+            const drawStar = (x, y, size) => {
+                ctx.beginPath();
+                ctx.moveTo(x, y - size);
+                ctx.lineTo(x + size/3, y - size/3);
+                ctx.lineTo(x + size, y);
+                ctx.lineTo(x + size/3, y + size/3);
+                ctx.lineTo(x, y + size);
+                ctx.lineTo(x - size/3, y + size/3);
+                ctx.lineTo(x - size, y);
+                ctx.lineTo(x - size/3, y - size/3);
+                ctx.closePath();
+                ctx.fill();
+            };
+            
+            drawStar(120, 200, 15);
+            drawStar(392, 200, 15);
+            drawStar(256, 150, 12);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.needsUpdate = true;
+            return texture;
+        };
+
+        // Main application
+        class FaceMaskAR {
+            constructor() {
+                this.mindarThree = null;
+                this.faceMesh = null;
+                this.currentMask = 'none';
+                this.wireframeMode = false;
+                this.textures = {};
+            }
+
+            async init() {
+                try {
+                    const { MindARThree } = window.MINDAR.FACE;
+                    
+                    this.mindarThree = new MindARThree({
+                        container: document.body,
+                    });
+
+                    const { renderer, scene, camera } = this.mindarThree;
+
+                    // Setup lighting
+                    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                    scene.add(ambientLight);
+
+                    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                    directionalLight.position.set(0, 1, 1);
+                    scene.add(directionalLight);
+
+                    // Create face mesh
+                    this.faceMesh = this.mindarThree.addFaceMesh();
+                    
+                    // Смещаем геометрию маски вверх для правильного позиционирования
+                    this.faceMesh.geometry.translate(0, 0.25, 0);
+
+                    scene.add(this.faceMesh);
+
+                    // Create textures
+                    this.createTextures();
+
+                    // Setup event handlers
+                    this.setupEventHandlers();
+
+                    // Start AR
+                    await this.mindarThree.start();
+                    
+                    // Hide loading
+                    document.getElementById('loading').classList.add('hidden');
+
+                    // Start render loop
+                    renderer.setAnimationLoop(() => {
+                        renderer.render(scene, camera);
+                    });
+
+                } catch (error) {
+                    console.error('Error initializing AR:', error);
+                    document.getElementById('loading').innerHTML = 'Помилка завантаження AR. Перевірте доступ до камери.';
+                }
+            }
+
+            createTextures() {
+                this.textures = {
+                    glasses: createGlassesTexture(),
+                    face_paint: createFacePaintTexture()
+                };
+            }
+
+            setupEventHandlers() {
+                // Mask selector
+                document.getElementById('maskSelector').addEventListener('change', (e) => {
+                    this.changeMask(e.target.value);
+                });
+
+                // Wireframe toggle
+                document.getElementById('toggleWireframe').addEventListener('click', () => {
+                    this.toggleWireframe();
+                });
+
+                // Reset position
+                document.getElementById('resetPosition').addEventListener('click', () => {
+                    this.resetPosition();
+                });
+
+                // Camera switch
+                document.getElementById('switch').addEventListener('click', () => {
+                    this.mindarThree.switchCamera();
+                });
+
+                // Capture photo
+                document.getElementById('capture').addEventListener('click', () => {
+                    this.capturePhoto();
+                });
+            }
+
+            changeMask(maskType) {
+                this.currentMask = maskType;
+                
+                if (maskType === 'none') {
+                    this.faceMesh.material.map = null;
+                    this.faceMesh.material.transparent = false;
+                } else {
+                    this.faceMesh.material.map = this.textures[maskType];
+                    this.faceMesh.material.transparent = true;
+                    this.faceMesh.material.opacity = 0.9;
+                }
+                
+                this.faceMesh.material.needsUpdate = true;
+            }
+
+            toggleWireframe() {
+                this.wireframeMode = !this.wireframeMode;
+                this.faceMesh.material.wireframe = this.wireframeMode;
+                
+                const btn = document.getElementById('toggleWireframe');
+                btn.textContent = this.wireframeMode ? 'Заливка' : 'Каркас';
+            }
+
+            resetPosition() {
+                // Reset any transformations
+                this.faceMesh.position.set(0, 0, 0);
+                this.faceMesh.rotation.set(0, 0, 0);
+                this.faceMesh.scale.set(1, 1, 1);
+            }
+
+            capturePhoto() {
+                const { video, renderer, scene, camera } = this.mindarThree;
+                const renderCanvas = renderer.domElement;
+                
+                // Create buffer canvas
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                
+                canvas.width = renderCanvas.width;
+                canvas.height = renderCanvas.height;
+                
+                // Calculate video crop parameters
+                const sx = (video.clientWidth - renderCanvas.clientWidth) / 2 
+                    * video.videoWidth / video.clientWidth;
+                const sy = (video.clientHeight - renderCanvas.clientHeight) / 2 
+                    * video.videoHeight / video.clientHeight;
+                const sw = video.videoWidth - sx * 2;
+                const sh = video.videoHeight - sy * 2;
+                
+                // Draw video frame
+                context.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+                
+                // Draw AR content
+                renderer.preserveDrawingBuffer = true;
+                renderer.render(scene, camera);
+                context.drawImage(renderCanvas, 0, 0, canvas.width, canvas.height);
+                renderer.preserveDrawingBuffer = false;
+                
+                // Download image
+                const data = canvas.toDataURL('image/png');
+                const link = document.createElement('a');
+                link.download = `face-mask-${Date.now()}.png`;
+                link.href = data;
+                link.click();
+            }
+        }
+
+        // Start application when DOM is loaded
+        window.addEventListener("DOMContentLoaded", () => {
+            const app = new FaceMaskAR();
+            app.init();
+        });
+    </script>
+</body>
+</html>

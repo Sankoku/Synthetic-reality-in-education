@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Віртуальна примірочна AR</title>
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-aframe.prod.js"></script>
+    
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+        
+        .app-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            /* Прибрано чорний фон - це була головна проблема! */
+            overflow: hidden;
+        }
+        
+        /* Забезпечуємо правильне позиціонування A-Frame сцени */
+        a-scene {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            z-index: 0 !important;
+        }
+        
+        /* Забезпечуємо правильне відображення canvas */
+        a-scene canvas {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+        }
+        
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 15px;
+            text-align: center;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .header h1 {
+            color: white;
+            margin: 0;
+            font-size: 24px;
+            font-weight: 300;
+            letter-spacing: 2px;
+        }
+        
+        .options-panel {
+            position: fixed;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 15;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(15px);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        
+        .accessory-category {
+            margin-bottom: 25px;
+        }
+        
+        .category-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .accessory-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .accessory-btn {
+            width: 60px;
+            height: 60px;
+            border: 3px solid transparent;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            object-fit: cover;
+            background: #f0f0f0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .accessory-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+        
+        .accessory-btn.selected {
+            border-color: #4CAF50;
+            box-shadow: 0 0 20px rgba(76, 175, 80, 0.5);
+            transform: scale(1.1);
+        }
+        
+        .accessory-btn::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.3) 50%, transparent 70%);
+            transform: translateX(-100%);
+            transition: transform 0.6s;
+        }
+        
+        .accessory-btn:hover::after {
+            transform: translateX(100%);
+        }
+        
+        .controls-panel {
+            position: fixed;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 15;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .control-btn {
+            width: 60px;
+            height: 60px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+        
+        .control-btn:hover {
+            transform: scale(1.1);
+            background: rgba(255, 255, 255, 1);
+        }
+        
+        .capture-btn {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: white;
+            width: 80px;
+            height: 80px;
+            font-size: 30px;
+        }
+        
+        .capture-btn:hover {
+            background: linear-gradient(135deg, #ee5a24, #ff6b6b);
+        }
+        
+        .reset-btn {
+            background: linear-gradient(135deg, #74b9ff, #0984e3);
+            color: white;
+        }
+        
+        .reset-btn:hover {
+            background: linear-gradient(135deg, #0984e3, #74b9ff);
+        }
+        
+        .preview-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(20px);
+            z-index: 25;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .preview-content {
+            max-width: 90%;
+            max-height: 90%;
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+            position: relative;
+        }
+        
+        .preview-image {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        .preview-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+        }
+        
+        .preview-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .share-btn {
+            background: linear-gradient(135deg, #00b894, #00cec9);
+            color: white;
+        }
+        
+        .close-btn {
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+        }
+        
+        .close-btn:hover, .share-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 30;
+            color: white;
+            font-size: 18px;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top: 3px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .status-bar {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            z-index: 20;
+        }
+        
+        /* Додаткові виправлення для мобільних пристроїв */
+        @media (max-width: 768px) {
+            .options-panel {
+                left: 10px;
+                padding: 15px;
+                max-height: 60vh;
+            }
+            
+            .controls-panel {
+                right: 10px;
+            }
+            
+            .header h1 {
+                font-size: 18px;
+            }
+            
+            .accessory-btn {
+                width: 50px;
+                height: 50px;
+            }
+        }
+        
+        /* Забезпечення правильної роботи на iOS */
+        @supports (-webkit-touch-callout: none) {
+            a-scene {
+                -webkit-transform: translate3d(0,0,0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="spinner"></div>
+            <div>Завантаження AR камери...</div>
+        </div>
+        
+        <div class="header">
+            <h1>🎭 Віртуальна примірочна AR</h1>
+        </div>
+        
+        <div class="options-panel">
+            <div class="accessory-category">
+                <div class="category-title">👒 Капелюхи</div>
+                <div class="accessory-grid">
+                    <img id="hat1" class="accessory-btn" 
+                         src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/face-tracking/assets/hat/thumbnail.png"
+                         alt="Капелюх 1"/>
+                    <img id="hat2" class="accessory-btn" 
+                         src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/face-tracking/assets/hat2/thumbnail.png"
+                         alt="Капелюх 2"/>
+                </div>
+            </div>
+            
+            <div class="accessory-category">
+                <div class="category-title">👓 Окуляри</div>
+                <div class="accessory-grid">
+                    <img id="glasses1" class="accessory-btn" 
+                         src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/face-tracking/assets/glasses/thumbnail.png"
+                         alt="Окуляри 1"/>
+                    <img id="glasses2" class="accessory-btn" 
+                         src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/face-tracking/assets/glasses2/thumbnail.png"
+                         alt="Окуляри 2"/>
+                </div>
+            </div>
+            
+            <div class="accessory-category">
+                <div class="category-title">💎 Сережки</div>
+                <div class="accessory-grid">
+                    <img id="earring" class="accessory-btn" 
+                         src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/face-tracking/assets/earring/thumbnail.png"
+                         alt="Сережки"/>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls-panel">
+            <button class="control-btn reset-btn" id="resetBtn" title="Скинути все">🔄</button>
+            <button class="control-btn capture-btn" id="captureBtn" title="Зробити фото">📸</button>
+        </div>
+        
+        <div class="preview-modal" id="previewModal">
+            <div class="preview-content">
+                <img id="previewImage" class="preview-image" alt="Фото">
+                <div class="preview-controls">
+                    <button class="preview-btn share-btn" id="shareBtn">Поділитися</button>
+                    <button class="preview-btn close-btn" id="closeBtn">Закрити</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="status-bar" id="statusBar">Наведіть камеру на обличчя для початку</div>
+        
+        <a-scene 
+            mindar-face 
+            embedded 
+            color-space="sRGB" 
+            renderer="colorManagement: true, physicallyCorrectLights" 
+            vr-mode-ui="enabled: false" 
+            device-orientation-permission-ui="enabled: false"
+            arjs='debugUIEnabled: false;'>
+            
+            <a-assets>
+                <a-asset-item id="headModel" 
+                             src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/face-tracking/assets/sparkar/headOccluder.glb"></a-asset-item>
+                <a-asset-item id="glassesModel" 
+                             src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/face-tracking/assets/glasses/scene.gltf"></a-asset-item>
+                <a-asset-item id="glassesModel2" 
+                             src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/face-tracking/assets/glasses2/scene.gltf"></a-asset-item>
+                <a-asset-item id="hatModel" 
+                             src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/face-tracking/assets/hat/scene.gltf"></a-asset-item>
+                <a-asset-item id="hatModel2" 
+                             src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/face-tracking/assets/hat2/scene.gltf"></a-asset-item>
+                <a-asset-item id="earringModel" 
+                             src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/face-tracking/assets/earring/scene.gltf"></a-asset-item>
+            </a-assets>
+            
+            <a-camera active="false" position="0 0 0"></a-camera>
+            
+            <!-- Head occluder -->
+            <a-entity mindar-face-target="anchorIndex: 168">
+                <a-gltf-model mindar-face-occluder 
+                             position="0 -0.3 0.15" 
+                             rotation="0 0 0" 
+                             scale="0.065 0.065 0.065" 
+                             src="#headModel"></a-gltf-model>
+            </a-entity>
+            
+            <!-- Hat 1 -->
+            <a-entity mindar-face-target="anchorIndex: 10">
+                <a-gltf-model rotation="0 0 0" 
+                             position="0 1.0 -0.5" 
+                             scale="0.35 0.35 0.35" 
+                             src="#hatModel" 
+                             class="hat1-entity" 
+                             visible="false"></a-gltf-model>
+            </a-entity>
+            
+            <!-- Hat 2 -->
+            <a-entity mindar-face-target="anchorIndex: 10">
+                <a-gltf-model rotation="0 0 0" 
+                             position="0 -0.2 -0.5" 
+                             scale="0.008 0.008 0.008" 
+                             src="#hatModel2" 
+                             class="hat2-entity" 
+                             visible="false"></a-gltf-model>
+            </a-entity>
+            
+            <!-- Glasses 1 -->
+            <a-entity mindar-face-target="anchorIndex: 168">
+                <a-gltf-model rotation="0 0 0" 
+                             position="0 0 0" 
+                             scale="0.01 0.01 0.01" 
+                             src="#glassesModel" 
+                             class="glasses1-entity" 
+                             visible="false"></a-gltf-model>
+            </a-entity>
+            
+            <!-- Glasses 2 -->
+            <a-entity mindar-face-target="anchorIndex: 168">
+                <a-gltf-model rotation="0 -90 0" 
+                             position="0 -0.3 0" 
+                             scale="0.6 0.6 0.6" 
+                             src="#glassesModel2" 
+                             class="glasses2-entity" 
+                             visible="false"></a-gltf-model>
+            </a-entity>
+            
+            <!-- Left earring -->
+            <a-entity mindar-face-target="anchorIndex: 127">
+                <a-gltf-model rotation="-0.1 0 0" 
+                             position="0 -0.3 -0.3" 
+                             scale="0.05 0.05 0.05" 
+                             src="#earringModel" 
+                             class="earring-entity" 
+                             visible="false"></a-gltf-model>
+            </a-entity>
+            
+            <!-- Right earring -->
+            <a-entity mindar-face-target="anchorIndex: 356">
+                <a-gltf-model rotation="0.1 0 0" 
+                             position="0 -0.3 -0.3" 
+                             scale="0.05 0.05 0.05" 
+                             src="#earringModel" 
+                             class="earring-entity" 
+                             visible="false"></a-gltf-model>
+            </a-entity>
+        </a-scene>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            const accessories = ["glasses1", "glasses2", "hat1", "hat2", "earring"];
+            const visibility = {};
+            
+            // Initialize visibility state
+            accessories.forEach(item => {
+                visibility[item] = false;
+            });
+            
+            // Function to toggle accessory visibility
+            const toggleAccessory = (accessoryId, isVisible) => {
+                const button = document.getElementById(accessoryId);
+                const entities = document.querySelectorAll(`.${accessoryId}-entity`);
+                
+                visibility[accessoryId] = isVisible;
+                
+                if (isVisible) {
+                    button.classList.add("selected");
+                } else {
+                    button.classList.remove("selected");
+                }
+                
+                entities.forEach(entity => {
+                    entity.setAttribute("visible", isVisible);
+                });
+                
+                console.log(`${accessoryId} ${isVisible ? 'показано' : 'приховано'}`);
+            };
+            
+            // Add click listeners to accessory buttons
+            accessories.forEach(accessoryId => {
+                const button = document.getElementById(accessoryId);
+                button.addEventListener('click', () => {
+                    const newState = !visibility[accessoryId];
+                    toggleAccessory(accessoryId, newState);
+                    updateStatus();
+                });
+            });
+            
+            // Reset all accessories
+            document.getElementById('resetBtn').addEventListener('click', () => {
+                accessories.forEach(accessoryId => {
+                    toggleAccessory(accessoryId, false);
+                });
+                updateStatus('Усі аксесуари скинуто');
+            });
+            
+            // Capture photo functionality
+            document.getElementById('captureBtn').addEventListener('click', () => {
+                capturePhoto();
+            });
+            
+            // Preview modal controls
+            document.getElementById('closeBtn').addEventListener('click', () => {
+                document.getElementById('previewModal').style.display = 'none';
+            });
+            
+            document.getElementById('shareBtn').addEventListener('click', () => {
+                sharePhoto();
+            });
+             
+            // Status updates
+            function updateStatus(message = '') {
+                const statusBar = document.getElementById('statusBar');
+                if (message) {
+                    statusBar.textContent = message;
+                    setTimeout(() => {
+                        statusBar.textContent = 'Наведіть камеру на обличчя для початку';
+                    }, 3000);
+                } else {
+                    const activeAccessories = accessories.filter(id => visibility[id]);
+                    if (activeAccessories.length === 0) {
+                        statusBar.textContent = 'Оберіть аксесуари для примірки';
+                    } else {
+                        statusBar.textContent = `Активні аксесуари: ${activeAccessories.length}`;
+                    }
+                }
+            }
+            
+            // Photo capture function
+            function capturePhoto() {
+                try {
+                    const sceneEl = document.querySelector('a-scene');
+                    const canvas = sceneEl.renderer.domElement;
+                    
+                    // Create a new canvas for the photo
+                    const photoCanvas = document.createElement('canvas');
+                    const ctx = photoCanvas.getContext('2d');
+                    
+                    photoCanvas.width = canvas.width;
+                    photoCanvas.height = canvas.height;
+                    
+                    // Draw the AR scene
+                    ctx.drawImage(canvas, 0, 0);
+                    
+                    // Convert to data URL
+                    const dataURL = photoCanvas.toDataURL('image/png');
+                    
+                    // Show preview
+                    document.getElementById('previewImage').src = dataURL;
+                    document.getElementById('previewModal').style.display = 'flex';
+                    
+                    updateStatus('Фото захоплено успішно!');
+                } catch (error) {
+                    console.error('Error capturing photo:', error);
+                    updateStatus('Помилка при захопленні фото');
+                }
+            }
+            
+            // Share photo function
+            function sharePhoto() {
+                const previewImage = document.getElementById('previewImage');
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                canvas.width = previewImage.naturalWidth;
+                canvas.height = previewImage.naturalHeight;
+                ctx.drawImage(previewImage, 0, 0);
+                
+                canvas.toBlob(blob => {
+                    const file = new File([blob], 'ar-photo.png', { type: 'image/png' });
+                    
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                        navigator.share({
+                            files: [file],
+                            title: 'AR примірка',
+                            text: 'Моя віртуальна примірка!'
+                        }).catch(console.error);
+                    } else {
+                        // Fallback: download the image
+                        const link = document.createElement('a');
+                        link.download = 'ar-photo.png';
+                        link.href = previewImage.src;
+                        link.click();
+                        updateStatus('Фото завантажено');
+                    }
+                });
+            }
+            
+            // Enhanced AR initialization
+            const sceneEl = document.querySelector('a-scene');
+            
+            // Hide loading overlay when AR is ready
+            sceneEl.addEventListener('loaded', () => {
+                console.log('A-Frame сцена завантажена');
+                setTimeout(() => {
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                    updateStatus('AR готовий до роботи');
+                }, 2000);
+            });
+            
+            // Handle AR events
+            sceneEl.addEventListener('arReady', () => {
+                console.log('AR готовий');
+                updateStatus('AR камера готова до роботи');
+            });
+            
+            sceneEl.addEventListener('arError', (error) => {
+                console.error('AR помилка:', error);
+                updateStatus('Помилка AR камери');
+            });
+            
+            // Camera permission handling
+            sceneEl.addEventListener('camera-init', () => {
+                console.log('Камера ініціалізована');
+                updateStatus('Камера активована');
+            });
+            
+            sceneEl.addEventListener('camera-error', (error) => {
+                console.error('Помилка камери:', error);
+                updateStatus('Помилка доступу до камери');
+            });
+        });
+    </script>
+</body>
+</html>

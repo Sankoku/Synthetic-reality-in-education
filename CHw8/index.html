@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
+    <title>MindAR Face Tracking - 468 Blue Spheres</title>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-face-three.prod.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: #000;
+            color: white;
+        }
+        
+        /* 👇 ИЗМЕНЕНИЕ: Добавлены стили для контейнера */
+        #container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            z-index: -2; /* Убедимся, что он за всем */
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .btn {
+            padding: 12px 20px;
+            font-size: 16px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .btn:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: rgba(0,0,0,0.8);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+            font-size: 18px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button id="startBtn" class="btn" onclick="start()">Почати відстеження</button>
+        <button id="stopBtn" class="btn" onclick="stop()" disabled>Зупинити</button>
+        <button id="toggleVideoBtn" class="btn" onclick="toggleVideo()" disabled>Приховати відео</button>
+    </div>
+    
+    <div class="status" id="status">
+        Готовий до запуску
+    </div>
+    
+    <div class="loading" id="loading">
+        Завантаження моделі...
+    </div>
+
+    <div id="container"></div>
+
+    <script>
+        const THREE = window.MINDAR.FACE.THREE;
+        
+        let startBtn, stopBtn, toggleVideoBtn, status, loading;
+        
+        let mindarThree = null;
+        let anchors = [];
+        let isStarted = false;
+        let videoHidden = false;
+        
+        window.addEventListener('DOMContentLoaded', () => {
+            startBtn = document.getElementById('startBtn');
+            stopBtn = document.getElementById('stopBtn');
+            toggleVideoBtn = document.getElementById('toggleVideoBtn');
+            status = document.getElementById('status');
+            loading = document.getElementById('loading');
+            
+            updateStatus('Готовий до запуску - натисніть "Почати відстеження"');
+            console.log('MindAR Face Tracking готовий до роботи');
+            console.log('Буде створено 468 синіх сфер для всіх опорних точок обличчя');
+        });
+        
+        function updateStatus(message) {
+            if (status) {
+                status.textContent = message;
+            }
+            console.log(message);
+        }
+        
+        async function start() {
+            try {
+                updateStatus('Ініціалізація...');
+                loading.style.display = 'block';
+                startBtn.disabled = true;
+                
+                // Створення MindAR з налаштуваннями для кращої продуктивності
+                mindarThree = new window.MINDAR.FACE.MindARThree({
+                    // 👇 ИЗМЕНЕНИЕ: Указываем наш новый контейнер вместо document.body
+                    container: document.querySelector("#container"),
+                    uiLoading: "no",
+                    uiScanning: "no",
+                    uiError: "no",
+                });
+                
+                const {renderer, scene, camera} = mindarThree;
+                
+                updateStatus('Створення 468 опорних точок...');
+                
+                anchors = [];
+                for(let i = 0; i < 468; i++) {
+                    const geometry = new THREE.SphereGeometry(0.008, 16, 12);
+                    const material = new THREE.MeshBasicMaterial({
+                        color: 0x0066ff,
+                        transparent: true,
+                        opacity: 0.8
+                    });
+                    const sphere = new THREE.Mesh(geometry, material);
+                    
+                    const anchor = mindarThree.addAnchor(i);
+                    anchor.group.add(sphere);
+                    anchors.push(anchor);
+                    
+                    if (i % 50 === 0) {
+                        updateStatus(`Створено ${i + 1}/468 точок...`);
+                        await new Promise(resolve => setTimeout(resolve, 10));
+                    }
+                }
+                
+                updateStatus('Запуск камери...');
+                
+                await mindarThree.start();
+
+                // 👇 ИЗМЕНЕНИЕ: Этот блок больше не нужен, так как контейнер и библиотека сами управляют размерами.
+                // Я его закомментировал, но можно и удалить.
+                /*
+                if (mindarThree.video) {
+                    mindarThree.video.style.position = 'fixed';
+                    mindarThree.video.style.top = '0';
+                    mindarThree.video.style.left = '0';
+                    mindarThree.video.style.width = '100vw';
+                    mindarThree.video.style.height = '100vh';
+                    mindarThree.video.style.objectFit = 'cover';
+                    mindarThree.video.style.zIndex = '-1';
+                }
+                */
+                
+                updateStatus(`Відстеження активне (${anchors.length} точок)`);
+                loading.style.display = 'none';
+                
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                toggleVideoBtn.disabled = false;
+                isStarted = true;
+                
+                renderer.setAnimationLoop(() => {
+                    renderer.render(scene, camera);
+                });
+                
+            } catch (error) {
+                console.error('Помилка при запуску:', error);
+                updateStatus('Помилка: ' + error.message);
+                loading.style.display = 'none';
+                startBtn.disabled = false;
+            }
+        }
+        
+        async function stop() {
+            try {
+                if (mindarThree && isStarted) {
+                    updateStatus('Зупинка...');
+                    await mindarThree.stop();
+                    
+                    anchors.forEach(anchor => {
+                        if (anchor.group) {
+                            anchor.group.clear();
+                        }
+                    });
+                    anchors = [];
+                    
+                    mindarThree = null;
+                    isStarted = false;
+                    videoHidden = false;
+                    
+                    updateStatus('Зупинено');
+                    
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    toggleVideoBtn.disabled = true;
+                    toggleVideoBtn.textContent = 'Приховати відео';
+                }
+            } catch (error) {
+                console.error('Помилка при зупинці:', error);
+                updateStatus('Помилка при зупинці');
+            }
+        }
+        
+        function toggleVideo() {
+            if (mindarThree && mindarThree.video) {
+                if (videoHidden) {
+                    mindarThree.video.style.visibility = "visible";
+                    toggleVideoBtn.textContent = 'Приховати відео';
+                    videoHidden = false;
+                    updateStatus('Відео показано');
+                } else {
+                    mindarThree.video.style.visibility = "hidden";
+                    toggleVideoBtn.textContent = 'Показати відео';
+                    videoHidden = true;
+                    updateStatus('Відео приховано (тільки сфери)');
+                }
+            }
+        }
+        
+        window.addEventListener('error', (event) => {
+            console.error('Глобальна помилка:', event.error);
+            updateStatus('Критична помилка');
+            if (loading) loading.style.display = 'none';
+            if (startBtn) startBtn.disabled = false;
+        });
+    </script>
+</body>
+</html>

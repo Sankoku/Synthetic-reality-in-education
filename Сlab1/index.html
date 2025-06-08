@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR Візитівка - Інтерактивна</title>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #mindar-container {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions">Наведіть камеру на маркер та натискайте на елементи</div>
+
+    <script>
+        // Допоміжні функції для створення текстур
+        const createTextTexture = (text, fontSize = 64, color = '#ffffff', bgColor = '#000000') => {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 1024;
+            canvas.height = 512;
+            
+            // Фон
+            context.fillStyle = bgColor;
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Текст
+            context.fillStyle = color;
+            context.font = `${fontSize}px Arial`;
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            
+            // Розбиваємо текст на рядки
+            const words = text.split(' ');
+            const lines = [];
+            let currentLine = words[0];
+            
+            for (let i = 1; i < words.length; i++) {
+                const word = words[i];
+                const width = context.measureText(currentLine + " " + word).width;
+                if (width < canvas.width - 100) {
+                    currentLine += " " + word;
+                } else {
+                    lines.push(currentLine);
+                    currentLine = word;
+                }
+            }
+            lines.push(currentLine);
+            
+            // Малюємо рядки
+            const lineHeight = fontSize * 1.2;
+            const startY = canvas.height / 2 - (lines.length - 1) * lineHeight / 2;
+            
+            lines.forEach((line, index) => {
+                context.fillText(line, canvas.width / 2, startY + index * lineHeight);
+            });
+            
+            return new THREE.CanvasTexture(canvas);
+        };
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+                container: document.body,
+                imageTargetSrc: "./marker.mind",
+            });
+
+            const { renderer, scene, camera } = mindarThree;
+
+            // Увімкнення рендерингу тіней
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            const anchor = mindarThree.addAnchor(0);
+            const group = new THREE.Group();
+            group.scale.set(0.25, 0.25, 0.25); // Зменшено у 2 рази з 0.5 до 0.25
+            anchor.group.add(group);
+
+            // Освітлення  
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 15, 10);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+
+            // Створюємо основну візитівку
+            const cardGeometry = new THREE.PlaneGeometry(4, 2.4);
+            const cardTexture = createTextTexture('Ляшенко Роман\nWeb Developer & AR Specialist', 48, '#ffffff', '#1a1a2e');
+            const cardMaterial = new THREE.MeshStandardMaterial({ 
+                map: cardTexture,
+                transparent: true
+            });
+            const businessCard = new THREE.Mesh(cardGeometry, cardMaterial);
+            businessCard.position.set(0, 0, 0);
+            businessCard.castShadow = true;
+            businessCard.receiveShadow = true;
+            group.add(businessCard);
+
+            // Створюємо іконки соціальних мереж
+            const iconGeometry = new THREE.CircleGeometry(0.3, 32);
+            
+            // Іконка email
+            const emailTexture = createTextTexture('📧', 120, '#ff6b6b', '#ffffff');
+            const emailMaterial = new THREE.MeshStandardMaterial({ 
+                map: emailTexture,
+                transparent: true
+            });
+            const emailIcon = new THREE.Mesh(iconGeometry, emailMaterial);
+            emailIcon.position.set(-1.6, -1.6, 0.1);
+            emailIcon.userData.clickable = true;
+            emailIcon.userData.type = 'email';
+            emailIcon.castShadow = true;
+            group.add(emailIcon);
+
+            // Іконка веб-сайту
+            const webTexture = createTextTexture('🌐', 120, '#4ecdc4', '#ffffff');
+            const webMaterial = new THREE.MeshStandardMaterial({ 
+                map: webTexture,
+                transparent: true
+            });
+            const webIcon = new THREE.Mesh(iconGeometry, webMaterial);
+            webIcon.position.set(-0.6, -1.6, 0.1);
+            webIcon.userData.clickable = true;
+            webIcon.userData.type = 'web';
+            webIcon.castShadow = true;
+            group.add(webIcon);
+
+            // Іконка GitHub
+            const githubTexture = createTextTexture('💻', 120, '#333333', '#ffffff');
+            const githubMaterial = new THREE.MeshStandardMaterial({ 
+                map: githubTexture,
+                transparent: true
+            });
+            const githubIcon = new THREE.Mesh(iconGeometry, githubMaterial);
+            githubIcon.position.set(0.6, -1.6, 0.1);
+            githubIcon.userData.clickable = true;
+            githubIcon.userData.type = 'github';
+            githubIcon.castShadow = true;
+            group.add(githubIcon);
+
+            // Іконка LinkedIn
+            const linkedinTexture = createTextTexture('👔', 120, '#0077b5', '#ffffff');
+            const linkedinMaterial = new THREE.MeshStandardMaterial({ 
+                map: linkedinTexture,
+                transparent: true
+            });
+            const linkedinIcon = new THREE.Mesh(iconGeometry, linkedinMaterial);
+            linkedinIcon.position.set(1.6, -1.6, 0.1);
+            linkedinIcon.userData.clickable = true;
+            linkedinIcon.userData.type = 'linkedin';
+            linkedinIcon.castShadow = true;
+            group.add(linkedinIcon);
+
+            // Створюємо 3D аватар з текстурою KDPU
+            const avatarGeometry = new THREE.BoxGeometry(1, 1, 1);
+            
+            // Завантажуємо текстуру KDPU.png
+            const textureLoader = new THREE.TextureLoader();
+            const kdpuTexture = textureLoader.load('./KDPU.png', 
+                // onLoad
+                () => {
+                    console.log('KDPU текстура завантажена успішно');
+                },
+                // onProgress
+                undefined,
+                // onError
+                (err) => {
+                    console.log('Помилка завантаження KDPU текстури:', err);
+                    // Якщо не вдалося завантажити, використовуємо резервну текстуру
+                    avatar.material.map = createTextTexture('LR', 200, '#ffffff', '#e74c3c');
+                    avatar.material.needsUpdate = true;
+                }
+            );
+            
+            const avatarMaterial = new THREE.MeshStandardMaterial({ 
+                map: kdpuTexture
+            });
+            const avatar = new THREE.Mesh(avatarGeometry, avatarMaterial);
+            avatar.position.set(-2.4, 0.6, 0.4);
+            avatar.userData.clickable = true;
+            avatar.userData.type = 'avatar';
+            avatar.castShadow = true;
+            group.add(avatar);
+
+            // Створюємо портфоліо слайди
+            const portfolioItems = [];
+            const portfolioTextures = [
+                createTextTexture('Проект 1:\nВеб-додаток для\nкерування завданнями', 36, '#ffffff', '#9b59b6'),
+                createTextTexture('Проект 2:\nМобільний додаток\nдля AR навігації', 36, '#ffffff', '#e67e22'),
+                createTextTexture('Проект 3:\nE-commerce платформа\nз AI рекомендаціями', 36, '#ffffff', '#27ae60')
+            ];
+
+            portfolioTextures.forEach((texture, index) => {
+                const portfolioGeometry = new THREE.PlaneGeometry(3, 2);
+                const portfolioMaterial = new THREE.MeshStandardMaterial({ 
+                    map: texture,
+                    transparent: true
+                });
+                const portfolioItem = new THREE.Mesh(portfolioGeometry, portfolioMaterial);
+                portfolioItem.position.set(2.4, 0.4, 0.1);
+                portfolioItem.userData.clickable = true;
+                portfolioItem.userData.type = 'portfolio';
+                portfolioItem.userData.index = index;
+                portfolioItem.castShadow = true;
+                portfolioItems.push(portfolioItem);
+            });
+
+            let currentPortfolio = 0;
+            group.add(portfolioItems[currentPortfolio]);
+
+            // Навігаційні стрілки для портфоліо
+            const arrowGeometry = new THREE.ConeGeometry(0.2, 0.4, 3);
+            
+            const leftArrow = new THREE.Mesh(arrowGeometry, new THREE.MeshStandardMaterial({ color: 0x3498db }));
+            leftArrow.position.set(0.6, 0.4, 0.4);
+            leftArrow.rotation.z = Math.PI / 2;
+            leftArrow.userData.clickable = true;
+            leftArrow.userData.type = 'leftArrow';
+            leftArrow.castShadow = true;
+            group.add(leftArrow);
+
+            const rightArrow = new THREE.Mesh(arrowGeometry, new THREE.MeshStandardMaterial({ color: 0x3498db }));
+            rightArrow.position.set(4.2, 0.4, 0.4);
+            rightArrow.rotation.z = -Math.PI / 2;
+            rightArrow.userData.clickable = true;
+            rightArrow.userData.type = 'rightArrow';
+            rightArrow.castShadow = true;
+            group.add(rightArrow);
+
+            // Створюємо інформаційну панель
+            const infoPanel = new THREE.Group();
+            const infoPanelGeometry = new THREE.PlaneGeometry(5, 2);
+            const infoPanelMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x2c3e50, 
+                transparent: true, 
+                opacity: 0.9 
+            });
+            const infoPanelMesh = new THREE.Mesh(infoPanelGeometry, infoPanelMaterial);
+            infoPanelMesh.position.set(0, 0, 0.6);
+            infoPanel.add(infoPanelMesh);
+
+            const infoText = new THREE.Mesh(
+                new THREE.PlaneGeometry(4.6, 1.6),
+                new THREE.MeshStandardMaterial({ 
+                    map: createTextTexture('Натисніть на елементи для взаємодії', 32, '#ffffff', 'transparent'),
+                    transparent: true
+                })
+            );
+            infoText.position.set(0, 0, 0.61);
+            infoPanel.add(infoText);
+            
+            infoPanel.visible = false;
+            group.add(infoPanel);
+
+            // Обробка кліків
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2();
+
+            const showInfo = (message, duration = 3000) => {
+                const newTexture = createTextTexture(message, 28, '#ffffff', 'transparent');
+                infoText.material.map = newTexture;
+                infoText.material.needsUpdate = true;
+                infoPanel.visible = true;
+                
+                setTimeout(() => {
+                    infoPanel.visible = false;
+                }, duration);
+            };
+
+            const handleClick = (event) => {
+                mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(group.children, true);
+
+                if (intersects.length > 0) {
+                    let object = intersects[0].object;
+                    
+                    // Шукаємо об'єкт з userData.clickable
+                    while (object.parent && !object.userData.clickable) {
+                        object = object.parent;
+                    }
+
+                    if (object.userData && object.userData.clickable) {
+                        switch (object.userData.type) {
+                            case 'email':
+                                showInfo('📧 Email: roman.lyashenko@example.com\nНатисніть для відправки листа');
+                                break;
+                                
+                            case 'web':
+                                showInfo('🌐 Веб-сайт: www.lyashenko-dev.com\nВідкриваємо сайт...');
+                                break;
+                                
+                            case 'github':
+                                showInfo('💻 GitHub: github.com/lyashenko-dev\nВідкриваємо репозиторії...');
+                                break;
+                                
+                            case 'linkedin':
+                                showInfo('👔 LinkedIn: linkedin.com/in/lyashenko-dev\nВідкриваємо профіль...');
+                                break;
+                                
+                            case 'avatar':
+                                showInfo('👋 Привіт! Я Ляшенко Роман\nWeb Developer та AR Specialist\nДосвід: 5+ років у веб-розробці');
+                                break;
+                                
+                            case 'portfolio':
+                                const portfolioIndex = object.userData.index;
+                                const portfolioMessages = [
+                                    'Проект 1: Веб-додаток для керування завданнями\nТехнології: React, Node.js, MongoDB',
+                                    'Проект 2: Мобільний додаток для AR навігації\nТехнології: React Native, AR.js, Three.js',
+                                    'Проект 3: E-commerce платформа\nТехнології: Vue.js, Express, PostgreSQL'
+                                ];
+                                showInfo(portfolioMessages[portfolioIndex]);
+                                break;
+                                
+                            case 'leftArrow':
+                                group.remove(portfolioItems[currentPortfolio]);
+                                currentPortfolio = (currentPortfolio - 1 + portfolioItems.length) % portfolioItems.length;
+                                group.add(portfolioItems[currentPortfolio]);
+                                showInfo(`Проект ${currentPortfolio + 1} з ${portfolioItems.length}`, 1500);
+                                break;
+                                
+                            case 'rightArrow':
+                                group.remove(portfolioItems[currentPortfolio]);
+                                currentPortfolio = (currentPortfolio + 1) % portfolioItems.length;
+                                group.add(portfolioItems[currentPortfolio]);
+                                showInfo(`Проект ${currentPortfolio + 1} з ${portfolioItems.length}`, 1500);
+                                break;
+                        }
+                    }
+                }
+            };
+
+            document.addEventListener('click', handleClick);
+            document.addEventListener('touchend', handleClick);
+
+            // Анімації
+            const clock = new THREE.Clock();
+            
+            await mindarThree.start();
+            
+            renderer.setAnimationLoop(() => {
+                const elapsedTime = clock.getElapsedTime();
+                
+                // Анімація аватара (обертання)
+                avatar.rotation.y = elapsedTime * 0.5;
+                avatar.rotation.x = Math.sin(elapsedTime) * 0.1;
+                
+                // Анімація іконок (плавне збільшення/зменшення)
+                const iconScale = 1 + Math.sin(elapsedTime * 2) * 0.1;
+                [emailIcon, webIcon, githubIcon, linkedinIcon].forEach(icon => {
+                    icon.scale.set(iconScale, iconScale, iconScale);
+                });
+                
+                // Анімація стрілок (пульсація)
+                const arrowScale = 1 + Math.sin(elapsedTime * 3) * 0.2;
+                leftArrow.scale.set(arrowScale, arrowScale, arrowScale);
+                rightArrow.scale.set(arrowScale, arrowScale, arrowScale);
+                
+                // Анімація поточного портфоліо (легке коливання)
+                if (portfolioItems[currentPortfolio]) {
+                    portfolioItems[currentPortfolio].position.y = 0.4 + Math.sin(elapsedTime * 1.5) * 0.1;
+                }
+                
+                renderer.render(scene, camera);
+            });
+        });
+    </script>
+</body>
+</html>

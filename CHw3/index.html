@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <title>Лабораторна робота №3 - AR сцена з текстурами</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    
+    canvas {
+      display: block;
+    }
+    
+    #mindar-container {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      z-index: 100;
+      font-size: 14px;
+      max-width: 300px;
+    }
+    
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      z-index: 200;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div>Завантаження AR...</div>
+    <div style="margin-top: 10px; font-size: 12px;">Направте камеру на маркер</div>
+  </div>
+  
+  <div id="info">
+    <strong>Лабораторна робота №3</strong><br>
+    AR сцена з трьома текстурами:<br>
+    📦 Куб з avatar.jpg<br>
+    🌐 Сфера з github.png<br>
+    🏗️ Циліндр з kenny.jpg
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", async () => {
+      try {
+        // Ініціалізація MindAR
+        const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+          container: document.body,
+          imageTargetSrc: "./marker.mind", // Ваш створений маркер
+          maxTrack: 1,
+          uiLoading: "no",
+          uiScanning: "no"
+        });
+
+        const { renderer, scene, camera } = mindarThree;
+        
+        // Приховати екран завантаження після ініціалізації
+        setTimeout(() => {
+          document.getElementById('loading').style.display = 'none';
+        }, 2000);
+
+        // Створення якоря для маркера
+        const anchor = mindarThree.addAnchor(0);
+        
+        // Створення групи для всіх об'єктів
+        const objectGroup = new THREE.Group();
+        anchor.group.add(objectGroup);
+
+        // Завантаження текстур
+        const textureLoader = new THREE.TextureLoader();
+        
+        // Завантаження текстур з обробкою помилок
+        const avatarTexture = textureLoader.load('./avatar.jpg', 
+          () => console.log('Avatar texture loaded'),
+          undefined,
+          (error) => console.error('Error loading avatar.jpg:', error)
+        );
+        
+        const githubTexture = textureLoader.load('./github.png',
+          () => console.log('GitHub texture loaded'),
+          undefined,
+          (error) => console.error('Error loading github.png:', error)
+        );
+        
+        const kennyTexture = textureLoader.load('./kenny.jpg',
+          () => console.log('Kenny texture loaded'),
+          undefined,
+          (error) => console.error('Error loading kenny.jpg:', error)
+        );
+
+        // 1. Куб з аватаром
+        const cubeGeometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+        const cubeMaterial = new THREE.MeshBasicMaterial({ 
+          map: avatarTexture
+        });
+        const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+        cube.position.set(-1.2, 0, 0); // Позиція зліва
+        objectGroup.add(cube);
+
+        // 2. Сфера з GitHub логотипом
+        const sphereGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+        const sphereMaterial = new THREE.MeshBasicMaterial({ 
+          map: githubTexture
+        });
+        const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        sphere.position.set(0, 0, 0); // Позиція в центрі
+        objectGroup.add(sphere);
+
+        // 3. Циліндр з Kenny
+        const cylinderGeometry = new THREE.CylinderGeometry(0.3, 0.3, 1.0, 32);
+        const cylinderMaterial = new THREE.MeshBasicMaterial({ 
+          map: kennyTexture
+        });
+        const cylinder = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
+        cylinder.position.set(1.2, 0, 0); // Позиція справа
+        objectGroup.add(cylinder);
+
+        // Масив об'єктів для анімації
+        const animatedObjects = [cube, sphere, cylinder];
+
+        // Додавання базового освітлення
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+        scene.add(ambientLight);
+
+        // Функція анімації
+        function animate() {
+          const time = Date.now() * 0.001;
+          
+          // Анімація куба - обертання навколо двох осей
+          cube.rotation.x = time * 0.6;
+          cube.rotation.y = time * 0.4;
+          
+          // Анімація сфери - переміщення по синусоїді вгору-вниз та обертання
+          sphere.position.y = Math.sin(time * 1.5) * 0.3;
+          sphere.rotation.y = time * 0.8;
+          
+          // Анімація циліндра - масштабування та обертання
+          const scale = 1 + Math.sin(time * 2) * 0.2;
+          cylinder.scale.set(scale, 1, scale);
+          cylinder.rotation.y = time * 1.2;
+          cylinder.rotation.z = Math.sin(time * 0.8) * 0.1;
+          
+          // Повільне обертання всієї групи навколо Y-осі
+          objectGroup.rotation.y = time * 0.1;
+        }
+
+        // Обробка подій відстеження маркера
+        anchor.onTargetFound = () => {
+          console.log("Маркер знайдено!");
+          document.getElementById('info').style.background = 'rgba(0, 128, 0, 0.7)';
+        };
+
+        anchor.onTargetLost = () => {
+          console.log("Маркер втрачено!");
+          document.getElementById('info').style.background = 'rgba(128, 0, 0, 0.7)';
+        };
+
+        // Обробка кліків для додаткової інтерактивності
+        document.body.addEventListener("click", (e) => {
+          const mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+          const mouseY = -((e.clientY / window.innerHeight) * 2 - 1);
+          const mouse = new THREE.Vector2(mouseX, mouseY);
+
+          const raycaster = new THREE.Raycaster();
+          raycaster.setFromCamera(mouse, camera);
+
+          const intersects = raycaster.intersectObjects(animatedObjects);
+
+          if (intersects.length > 0) {
+            const clickedObject = intersects[0].object;
+            // Додаємо ефект при кліку - швидке обертання
+            clickedObject.rotation.x += Math.PI / 3;
+            clickedObject.rotation.z += Math.PI / 3;
+            console.log("Клік по об'єкту!");
+          }
+        });
+
+        // Запуск AR
+        await mindarThree.start();
+        
+        // Запуск циклу рендерингу з анімацією
+        renderer.setAnimationLoop(() => {
+          animate();
+          renderer.render(scene, camera);
+        });
+
+        console.log("AR сцена з текстурами успішно запущена!");
+
+      } catch (error) {
+        console.error("Помилка ініціалізації AR:", error);
+        document.getElementById('loading').innerHTML = 
+          `<div style="color: red;">Помилка: ${error.message}</div>
+           <div style="font-size: 12px; margin-top: 10px;">
+           Перевірте наявність файлів marker.mind, avatar.jpg, github.png, kenny.jpg та доступ до камери
+           </div>`;
+      }
+    });
+
+    // Обробка помилок завантаження
+    window.addEventListener('error', (e) => {
+      console.error('Глобальна помилка:', e.error);
+    });
+  </script>
+</body>
+</html>

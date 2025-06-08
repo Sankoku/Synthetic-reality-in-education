@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebXR AR Scene - Three.js Objects</title>
+    
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.min.js",
+            "three/addons/": "https://unpkg.com/three@0.176.0/examples/jsm/"
+        }
+    }
+    </script>
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #121212;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 100;
+            max-width: 300px;
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        
+        button {
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            padding: 12px 20px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        button:hover {
+            background: rgba(255, 255, 255, 1);
+            transform: scale(1.05);
+        }
+        
+        #arButton {
+            position: fixed !important;
+            bottom: 20px !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            background: #ff6b35 !important;
+            color: white !important;
+            border: none !important;
+            padding: 15px 30px !important;
+            border-radius: 30px !important;
+            font-size: 18px !important;
+            font-weight: bold !important;
+            cursor: pointer !important;
+            z-index: 1000 !important;
+            transition: all 0.3s ease !important;
+        }
+        
+        #arButton:hover {
+            background: #e55a2b !important;
+            transform: translateX(-50%) scale(1.05) !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h3>🎯 WebXR AR Сцена</h3>
+        <p>• Натисніть "Enter AR" для початку</p>
+        <p>• Використовуйте контролер для розміщення об'єктів</p>
+        <p>• Натисніть тригер для створення куба</p>
+        <p>• Об'єкти з'являються у реальному світі</p>
+    </div>
+    
+    <div id="controls">
+        <button onclick="clearObjects()">🗑️ Очистити</button>
+        <button onclick="addRandomObject()">🎲 Випадковий об'єкт</button>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { ARButton } from 'three/addons/webxr/ARButton.js';
+
+        let scene, camera, renderer, controller;
+        let objects = [];
+        let objectTypes = ['cube', 'sphere', 'pyramid', 'torus'];
+        let colors = [0xff6b35, 0x4ecdc4, 0x45b7d1, 0x96ceb4, 0xfeca57, 0xff9ff3, 0x54a0ff];
+
+        // Ініціалізація
+        const init = () => {
+            // Створення сцени
+            scene = new THREE.Scene();
+            
+            // Камера
+            camera = new THREE.PerspectiveCamera(
+                70, 
+                window.innerWidth / window.innerHeight, 
+                0.01, 
+                20
+            );
+
+            // Рендерер
+            renderer = new THREE.WebGLRenderer({ 
+                antialias: true, 
+                alpha: true 
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.xr.enabled = true;
+            
+            document.body.appendChild(renderer.domElement);
+
+            // Освітлення
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+
+            // Контролер WebXR
+            controller = renderer.xr.getController(0);
+            scene.add(controller);
+
+            // Візуальний індикатор контролера
+            const geometry = new THREE.CylinderGeometry(0.005, 0.05, 0.1, 6);
+            const material = new THREE.MeshBasicMaterial({ color: 0xff6b35 });
+            const controllerMesh = new THREE.Mesh(geometry, material);
+            controllerMesh.rotateX(-Math.PI / 2);
+            controller.add(controllerMesh);
+
+            // Обробники подій контролера
+            controller.addEventListener('selectstart', onSelectStart);
+            controller.addEventListener('selectend', onSelectEnd);
+
+            // Обробники WebXR сесій
+            renderer.xr.addEventListener('sessionstart', () => {
+                console.log('🚀 WebXR AR сесію розпочато');
+                document.getElementById('info').style.display = 'none';
+                document.getElementById('controls').style.display = 'none';
+            });
+            
+            renderer.xr.addEventListener('sessionend', () => {
+                console.log('🛑 WebXR AR сесію завершено');
+                document.getElementById('info').style.display = 'block';
+                document.getElementById('controls').style.display = 'flex';
+            });
+
+            // Створення AR кнопки
+            const arButton = ARButton.createButton(renderer, {
+                optionalFeatures: ['dom-overlay', 'hit-test'],
+                domOverlay: { root: document.body }
+            });
+            arButton.id = 'arButton';
+            document.body.appendChild(arButton);
+
+            // Додавання початкових об'єктів для демонстрації
+            addDemoObjects();
+
+            // Анімаційний цикл
+            renderer.setAnimationLoop(animate);
+        };
+
+        // Створення різних типів об'єктів
+        const createObject = (type, position) => {
+            let geometry, material, mesh;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            
+            switch(type) {
+                case 'cube':
+                    geometry = new THREE.BoxGeometry(0.08, 0.08, 0.08);
+                    break;
+                case 'sphere':
+                    geometry = new THREE.SphereGeometry(0.05, 16, 16);
+                    break;
+                case 'pyramid':
+                    geometry = new THREE.ConeGeometry(0.05, 0.1, 8);
+                    break;
+                case 'torus':
+                    geometry = new THREE.TorusGeometry(0.04, 0.02, 8, 16);
+                    break;
+                default:
+                    geometry = new THREE.BoxGeometry(0.08, 0.08, 0.08);
+            }
+            
+            material = new THREE.MeshLambertMaterial({ color: color });
+            mesh = new THREE.Mesh(geometry, material);
+            
+            if (position) {
+                mesh.position.copy(position);
+            }
+            
+            // Додавання обертання для краси
+            mesh.userData = {
+                rotationSpeed: {
+                    x: (Math.random() - 0.5) * 0.02,
+                    y: (Math.random() - 0.5) * 0.02,
+                    z: (Math.random() - 0.5) * 0.02
+                }
+            };
+            
+            scene.add(mesh);
+            objects.push(mesh);
+            return mesh;
+        };
+
+        // Обробник натискання тригера
+        const onSelectStart = () => {
+            console.log('🎯 Тригер натиснуто');
+        };
+
+        const onSelectEnd = () => {
+            console.log('🎯 Тригер відпущено - створюємо об\'єкт');
+            
+            // Створення об'єкта на позиції контролера
+            const position = new THREE.Vector3();
+            position.setFromMatrixPosition(controller.matrixWorld);
+            
+            const objectType = objectTypes[Math.floor(Math.random() * objectTypes.length)];
+            createObject(objectType, position);
+        };
+
+        // Додавання демонстраційних об'єктів
+        const addDemoObjects = () => {
+            // Куб
+            const cube = createObject('cube');
+            cube.position.set(0, 0, -1);
+            
+            // Сфера
+            const sphere = createObject('sphere');
+            sphere.position.set(0.3, 0.1, -0.8);
+            
+            // Піраміда
+            const pyramid = createObject('pyramid');
+            pyramid.position.set(-0.3, 0.1, -0.8);
+            
+            // Тор
+            const torus = createObject('torus');
+            torus.position.set(0, 0.2, -0.6);
+        };
+
+        // Анімаційний цикл
+        const animate = () => {
+            // Обертання об'єктів
+            objects.forEach(obj => {
+                if (obj.userData.rotationSpeed) {
+                    obj.rotation.x += obj.userData.rotationSpeed.x;
+                    obj.rotation.y += obj.userData.rotationSpeed.y;
+                    obj.rotation.z += obj.userData.rotationSpeed.z;
+                }
+            });
+            
+            renderer.render(scene, camera);
+        };
+
+        // Глобальні функції для кнопок
+        window.clearObjects = () => {
+            objects.forEach(obj => {
+                scene.remove(obj);
+            });
+            objects = [];
+            console.log('🗑️ Всі об\'єкти видалено');
+        };
+
+        window.addRandomObject = () => {
+            const objectType = objectTypes[Math.floor(Math.random() * objectTypes.length)];
+            const position = new THREE.Vector3(
+                (Math.random() - 0.5) * 2,
+                Math.random() * 0.5,
+                -Math.random() * 2 - 0.5
+            );
+            createObject(objectType, position);
+            console.log(`🎲 Додано випадковий ${objectType}`);
+        };
+
+        // Обробка зміни розміру вікна
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Перевірка підтримки WebXR
+        if ('xr' in navigator) {
+            console.log('✅ WebXR підтримується');
+            init();
+        } else {
+            console.log('❌ WebXR не підтримується цим браузером');
+            document.getElementById('info').innerHTML = `
+                <h3>❌ WebXR не підтримується</h3>
+                <p>Для роботи з AR потрібен сучасний браузер з підтримкою WebXR</p>
+                <p>Рекомендуємо Chrome на Android пристрої</p>
+            `;
+        }
+    </script>
+</body>
+</html>

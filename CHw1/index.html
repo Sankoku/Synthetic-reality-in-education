@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR сцена з накладанням відео</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+        
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 3;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        
+        button {
+            margin: 5px;
+            padding: 8px 12px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        #status {
+            margin-top: 10px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="canvas"></canvas>
+        
+        <div id="controls">
+            <button id="startBtn">Запустити камеру</button>
+            <button id="toggleObjects">Toggle об'єкти</button>
+            <div id="status">Натисніть "Запустити камеру" для початку</div>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.172.0/build/three.module.js"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from "three";
+
+        class ARVideoScene {
+            constructor() {
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.video = null;
+                this.canvas = null;
+                this.objects = [];
+                this.animationId = null;
+                this.isRunning = false;
+                
+                this.init();
+                this.setupEventListeners();
+            }
+            
+            init() {
+                // Отримання елементів
+                this.video = document.getElementById('video');
+                this.canvas = document.getElementById('canvas');
+                
+                // Створення сцени
+                this.scene = new THREE.Scene();
+                
+                // Створення камери
+                this.camera = new THREE.PerspectiveCamera(
+                    75, 
+                    window.innerWidth / window.innerHeight, 
+                    0.1, 
+                    1000
+                );
+                this.camera.position.set(0, 0, 5);
+                
+                // Створення рендерера
+                this.renderer = new THREE.WebGLRenderer({
+                    canvas: this.canvas,
+                    alpha: true,
+                    antialias: true
+                });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setClearColor(0x000000, 0); // Прозорий фон
+                
+                // Створення 3D об'єктів
+                this.createObjects();
+                
+                // Додавання освітлення
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                this.scene.add(ambientLight);
+                
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(5, 5, 5);
+                this.scene.add(directionalLight);
+            }
+            
+            createObjects() {
+                // Синій куб
+                const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+                const cubeMaterial = new THREE.MeshLambertMaterial({color: 0x0000FF});
+                const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+                cube.position.set(-2, 0, 0);
+                this.scene.add(cube);
+                this.objects.push(cube);
+                
+                // Зелена сфера
+                const sphereGeometry = new THREE.SphereGeometry(0.7, 32, 32);
+                const sphereMaterial = new THREE.MeshLambertMaterial({color: 0x00FF00});
+                const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+                sphere.position.set(0, 0, 0);
+                this.scene.add(sphere);
+                this.objects.push(sphere);
+                
+                // Червоний циліндр
+                const cylinderGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1.5, 32);
+                const cylinderMaterial = new THREE.MeshLambertMaterial({color: 0xFF0000});
+                const cylinder = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
+                cylinder.position.set(2, 0, 0);
+                this.scene.add(cylinder);
+                this.objects.push(cylinder);
+                
+                // Жовтий тор
+                const torusGeometry = new THREE.TorusGeometry(0.8, 0.3, 16, 100);
+                const torusMaterial = new THREE.MeshLambertMaterial({color: 0xFFFF00});
+                const torus = new THREE.Mesh(torusGeometry, torusMaterial);
+                torus.position.set(0, 2, 0);
+                this.scene.add(torus);
+                this.objects.push(torus);
+            }
+            
+            async startCamera() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: 'environment', // Задня камера на мобільних
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        }
+                    });
+                    
+                    this.video.srcObject = stream;
+                    await this.video.play();
+                    
+                    document.getElementById('status').textContent = 'Камера активна';
+                    this.startAnimation();
+                    
+                } catch (error) {
+                    console.error('Помилка доступу до камери:', error);
+                    document.getElementById('status').textContent = 'Помилка: ' + error.message;
+                }
+            }
+            
+            startAnimation() {
+                if (this.isRunning) return;
+                this.isRunning = true;
+                this.animate();
+            }
+            
+            animate() {
+                if (!this.isRunning) return;
+                
+                this.animationId = requestAnimationFrame(() => this.animate());
+                
+                // Анімація об'єктів
+                const time = Date.now() * 0.001;
+                
+                this.objects.forEach((obj, index) => {
+                    obj.rotation.x = time * (0.5 + index * 0.1);
+                    obj.rotation.y = time * (0.7 + index * 0.15);
+                    
+                    // Додавання плавного руху
+                    obj.position.y += Math.sin(time + index) * 0.01;
+                });
+                
+                // Рендер сцени
+                this.renderer.render(this.scene, this.camera);
+            }
+            
+            toggleObjects() {
+                this.objects.forEach(obj => {
+                    obj.visible = !obj.visible;
+                });
+            }
+            
+            setupEventListeners() {
+                // Кнопка запуску камери
+                document.getElementById('startBtn').addEventListener('click', () => {
+                    this.startCamera();
+                });
+                
+                // Кнопка переключення об'єктів
+                document.getElementById('toggleObjects').addEventListener('click', () => {
+                    this.toggleObjects();
+                });
+                
+                // Обробка зміни розміру вікна
+                window.addEventListener('resize', () => {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+                
+                // Керування мишею/дотиком
+                let isMouseDown = false;
+                let mouseX = 0, mouseY = 0;
+                
+                this.canvas.addEventListener('mousedown', (e) => {
+                    isMouseDown = true;
+                    mouseX = e.clientX;
+                    mouseY = e.clientY;
+                });
+                
+                this.canvas.addEventListener('mousemove', (e) => {
+                    if (!isMouseDown) return;
+                    
+                    const deltaX = e.clientX - mouseX;
+                    const deltaY = e.clientY - mouseY;
+                    
+                    this.camera.position.x += deltaX * 0.01;
+                    this.camera.position.y -= deltaY * 0.01;
+                    
+                    mouseX = e.clientX;
+                    mouseY = e.clientY;
+                });
+                
+                this.canvas.addEventListener('mouseup', () => {
+                    isMouseDown = false;
+                });
+                
+                // Zoom коліщатком миші
+                this.canvas.addEventListener('wheel', (e) => {
+                    this.camera.position.z += e.deltaY * 0.01;
+                    this.camera.position.z = Math.max(1, Math.min(10, this.camera.position.z));
+                });
+            }
+        }
+        
+        // Ініціалізація при завантаженні сторінки
+        document.addEventListener('DOMContentLoaded', () => {
+            new ARVideoScene();
+        });
+    </script>
+</body>
+</html>

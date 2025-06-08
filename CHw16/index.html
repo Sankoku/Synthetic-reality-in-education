@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Розпізнавання віку та статі - AR</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Arial', sans-serif;
+    }
+    
+    #stop {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      padding: 12px 24px;
+      font-size: 1.2em;
+      background: linear-gradient(135deg, #ff4757, #ff3742);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      z-index: 1000;
+      box-shadow: 0 6px 20px rgba(255, 71, 87, 0.3);
+      font-weight: bold;
+      text-transform: uppercase;
+      transition: all 0.3s ease;
+    }
+    
+    #stop:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(255, 71, 87, 0.4);
+    }
+    
+    #result {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: linear-gradient(145deg, rgba(15, 32, 39, 0.95), rgba(32, 58, 67, 0.95));
+      color: #ffffff;
+      padding: 20px;
+      border-radius: 16px;
+      font-size: 16px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      min-width: 280px;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    
+    .status {
+      color: #4ecdc4;
+      font-weight: 600;
+      margin-bottom: 10px;
+      text-align: center;
+      font-size: 18px;
+    }
+    
+    .info-item {
+      margin: 12px 0;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      border-left: 4px solid #4ecdc4;
+    }
+    
+    .label {
+      font-weight: 600;
+      color: #4ecdc4;
+      display: inline-block;
+      width: 100px;
+    }
+    
+    .value {
+      color: #ffffff;
+      font-weight: 500;
+    }
+    
+    .loading {
+      text-align: center;
+      color: #4ecdc4;
+      font-size: 16px;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+    
+    .confidence {
+      background: linear-gradient(90deg, #4ecdc4, #44a08d);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-weight: bold;
+    }
+  </style>
+  
+  <!-- Import Maps for Three.js and MindAR -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+      "mindar-face-three":"https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-three.prod.js",
+      "face-api": "https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.esm.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="result">
+    <div class="loading">🔄 Завантаження моделей...</div>
+  </div>
+  <button type="button" id="stop">Зупинити</button>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { MindARThree } from 'mindar-face-three';
+    import * as faceapi from 'face-api';
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const start = async() => {
+        try {
+          // 1. Set up MindAR
+          const mindarThree = new MindARThree({
+            container: document.body,
+          });
+          const {renderer, scene, camera} = mindarThree;
+          
+          const stopButton = document.getElementById('stop');
+          const result = document.getElementById("result");
+
+          // 2. Load face-api models
+          const modelURL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model/";
+          
+          result.innerHTML = '<div class="loading">📦 Завантаження моделей розпізнавання...</div>';
+          
+          await Promise.all([
+            faceapi.nets.ssdMobilenetv1.loadFromUri(modelURL),
+            faceapi.nets.faceLandmark68Net.loadFromUri(modelURL),
+            faceapi.nets.ageGenderNet.loadFromUri(modelURL)
+          ]);
+
+          result.innerHTML = '<div class="loading">🎥 Ініціалізація камери...</div>';
+          
+          // 3. Start MindAR
+          await mindarThree.start();
+          let isStop = false;
+
+          result.innerHTML = '<div class="status">✅ Система готова до роботи</div>';
+
+          // Stop button functionality
+          stopButton.addEventListener('click', () => {
+            mindarThree.stop();
+            isStop = true;
+            renderer.setAnimationLoop(null);
+            result.innerHTML = '<div class="status">🛑 Система зупинена</div>';
+          });
+
+          // 4. Process video frames
+          const video = mindarThree.video;
+          const SKIP = 10; // Process every 10th frame for better performance
+          let count = 1;
+          let lastDetectionTime = 0;
+          
+          // Animation loop
+          renderer.setAnimationLoop(async () => {
+            if(isStop) {
+              renderer.setAnimationLoop(null);
+              return;
+            }
+
+            if (count % SKIP === 0) {
+              try {
+                const currentTime = Date.now();
+                
+                // Detect faces with age and gender
+                const detections = await faceapi
+                  .detectAllFaces(video, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+                  .withFaceLandmarks()
+                  .withAgeAndGender();
+
+                if (detections && detections.length > 0) {
+                  const detection = detections[0];
+                  const age = Math.round(detection.age);
+                  const gender = detection.gender;
+                  const genderProbability = Math.round(100 * detection.genderProbability);
+                  const confidence = Math.round(100 * detection.detection.score);
+                  
+                  // Update display
+                  result.innerHTML = `
+                    <div class="status">👤 Обличчя розпізнано</div>
+                    <div class="info-item">
+                      <span class="label">Вік:</span>
+                      <span class="value">${age} років</span>
+                    </div>
+                    <div class="info-item">
+                      <span class="label">Стать:</span>
+                      <span class="value">${gender === 'male' ? 'Чоловіча' : 'Жіноча'}</span>
+                    </div>
+                    <div class="info-item">
+                      <span class="label">Точність статі:</span>
+                      <span class="value confidence">${genderProbability}%</span>
+                    </div>
+                    <div class="info-item">
+                      <span class="label">Впевненість:</span>
+                      <span class="value confidence">${confidence}%</span>
+                    </div>
+                  `;
+                  
+                  lastDetectionTime = currentTime;
+                } else {
+                  // No face detected
+                  if (currentTime - lastDetectionTime > 2000) {
+                    result.innerHTML = `
+                      <div class="status">🔍 Пошук обличчя...</div>
+                      <div style="text-align: center; margin-top: 15px; color: #888;">
+                        Розташуйте обличчя перед камерою
+                      </div>
+                    `;
+                  }
+                }
+              } catch (error) {
+                console.error('Detection error:', error);
+                result.innerHTML = `
+                  <div class="status">⚠️ Помилка розпізнавання</div>
+                  <div style="color: #ff6b6b; margin-top: 10px;">
+                    ${error.message}
+                  </div>
+                `;
+              }
+            }
+            
+            count++;
+            renderer.render(scene, camera);
+          });
+          
+        } catch (error) {
+          console.error('Initialization error:', error);
+          document.getElementById("result").innerHTML = `
+            <div class="status">❌ Помилка ініціалізації</div>
+            <div style="color: #ff6b6b; margin-top: 10px;">
+              ${error.message}
+            </div>
+          `;
+        }
+      };
+      
+      start();
+    });
+  </script>
+</body>
+</html>

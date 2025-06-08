@@ -1,0 +1,11 @@
+Model Information:
+* title:	Baltica (1940)
+* source:	https://sketchfab.com/3d-models/baltica-1940-019f9fde117144439741561d833be605
+* author:	SWEDISH NATIONAL MARITIME AND TRANSPORT MUSEUMS (https://sketchfab.com/maritima)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Baltica (1940)" (https://sketchfab.com/3d-models/baltica-1940-019f9fde117144439741561d833be605) by SWEDISH NATIONAL MARITIME AND TRANSPORT MUSEUMS (https://sketchfab.com/maritima) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
